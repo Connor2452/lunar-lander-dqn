@@ -37,7 +37,7 @@ from collections import deque, namedtuple
 """
 
 class Network(nn.Module):
-
+# Simple 3-layer fully connected network mapping states to Q-values for each action
   def __init__(self, state_size, action_size, seed = 42) -> None:
       super(Network, self).__init__()
       self.seed = torch.manual_seed(seed)
@@ -77,7 +77,8 @@ interpolation_parameter = 0.001
 """### Implementing Experience Replay"""
 
 class ReplayMemory(object):
-
+# Stores past experiences and samples mini-batches to stabilize learning
+# memory holds tuples of (state, action, reward, next_state, done)
   def __init__(self, capacity):
     self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     self.capacity = capacity
@@ -98,7 +99,7 @@ class ReplayMemory(object):
     return states, next_states, actions, rewards, dones
 
 """### Implementing the DQN class"""
-
+# Handles action selection, learning from replay, and soft updates of target network
 class Agent():
 
   def __init__(self, state_size, action_size):
@@ -111,6 +112,7 @@ class Agent():
     self.memory = ReplayMemory(replay_buffer_size)
     self.t_step = 0
 
+  # store experience and learn every 4 steps
   def step(self, state, action, reward, next_state, done):
     self.memory.push((state, action, reward, next_state, done))
     self.t_step = (self.t_step + 1) % 4
@@ -119,6 +121,7 @@ class Agent():
         experiences = self.memory.sample(minibatch_size)
         self.learn(experiences, discount_factor)
 
+  # epsilon-greedy action selection
   def act(self, state, epsilon = 0.):
     state = torch.from_numpy(state).float().unsqueeze(0).to(self.device)
     self.local_qnetwork.eval()
@@ -130,6 +133,7 @@ class Agent():
     else:
       return random.choice(np.arange(self.action_size))
 
+  # update Q-network weights based on sampled experiences
   def learn(self, experiences, discount_factor):
     states, next_states, actions, rewards, dones = experiences
     next_q_targets = self.target_qnetwork(next_states).detach().max(1)[0].unsqueeze(1)
@@ -141,6 +145,7 @@ class Agent():
     self.optimizer.step()
     self.soft_update(self.local_qnetwork, self.target_qnetwork, interpolation_parameter)
 
+  # slowly update target network for stable training
   def soft_update(self, local_model, target_model, interpolation_parameter):
     for target_param, local_param in zip(target_model.parameters(), local_model.parameters()):
       target_param.data.copy_(interpolation_parameter * local_param.data + (1.0 - interpolation_parameter) * target_param.data)
@@ -159,10 +164,14 @@ epsilon_decay_value = 0.995
 epsilon = epsilon_starting_value
 scores_on_100_episodes = deque(maxlen = 100)
 
+# Loop over episodes, select actions, step environment, update networks
+# Track scores and print progress
 for episode in range(1, number_episodes + 1):
+  # Reset enviorment and score
   state, _ = env.reset()
   score = 0
   for t in range(maximum_number_timesteps_per_episode):
+    # Select action and update agent
     action = agent.act(state, epsilon)
     next_state, reward, done, _, _ = env.step(action)
     agent.step(state, action, reward, next_state, done)
@@ -170,6 +179,7 @@ for episode in range(1, number_episodes + 1):
     score += reward
     if done:
       break
+  # Update epsilon and track average reward
   scores_on_100_episodes.append(score)
   epsilon = max(epsilon_ending_value, epsilon_decay_value * epsilon)
   print('\rEpisode {}\tAverage Score: {:.2f}'.format(episode, np.mean(scores_on_100_episodes)), end = "")
